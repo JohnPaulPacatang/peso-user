@@ -158,7 +158,7 @@ const AppliedJobs = () => {
                                     {job.resumeLink ? (
                                         <button
                                             onClick={() => handleViewResume(job.resumeLink)}
-                                            className="inline-flex items-center px-4 py-2 text-darkblue hover:text-blue transition-colors transition-colors text-sm"
+                                            className="inline-flex items-center px-4 py-2 text-darkblue hover:text-blue transition-colors text-sm"
                                         >
                                             <FaEye className="mr-2" /> View Resume
                                         </button>
