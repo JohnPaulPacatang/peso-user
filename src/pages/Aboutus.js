@@ -15,8 +15,9 @@ const Aboutus = () => {
         <div className="w-full">
           <img src={aboutBanner} alt="About Us Banner" className="w-full h-auto" />
         </div>
-        <HowItWorks />
+    
         <AboutCity />
+        <HowItWorks />
       
         <div className='lg:px-32 px-8 py-16'>
           <VisionMission />
