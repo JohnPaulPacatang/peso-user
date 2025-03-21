@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { doc, getDoc, collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { db, auth } from "../firebase";
-import { onAuthStateChanged } from "firebase/auth"; // Added import
+import { onAuthStateChanged } from "firebase/auth";
 import { IoIosArrowBack } from "react-icons/io";
 import { IoClose, IoBriefcase, IoLocationSharp, IoCalendar } from "react-icons/io5";
 import { FaMoneyBillWave, FaClock, FaFileUpload } from "react-icons/fa";
@@ -11,9 +11,10 @@ import axios from "axios";
 import { toast } from "react-hot-toast";
 import placeholder from "../assets/companycolored.webp";
 import PageLoader from "../components/PageLoader";
+import emailjs from '@emailjs/browser';
 
-const CLOUD_NAME = "drg1csmnn";
-const UPLOAD_PRESET = "ybbfcbyk";
+const UPLOAD_PRESET = process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET;
+const CLOUD_NAME = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME;
 
 const JobDetails = () => {
   const { jobId } = useParams();
@@ -33,7 +34,7 @@ const JobDetails = () => {
   const [previousResumes, setPreviousResumes] = useState([]);
   const [loadingResumes, setLoadingResumes] = useState(false);
   const [selectedExistingResume, setSelectedExistingResume] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null); // Added state for tracking current user
+  const [currentUser, setCurrentUser] = useState(null);
   const [applicationForm, setApplicationForm] = useState({
     name: "",
     email: "",
@@ -43,7 +44,7 @@ const JobDetails = () => {
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
-    setSelectedFile(null); 
+    setSelectedFile(null);
     setSelectedExistingResume(null);
     setIsDragging(false);
   };
@@ -58,7 +59,7 @@ const JobDetails = () => {
     return displayNames[fieldName] || fieldName;
   };
 
-  // Fetch job details
+
   useEffect(() => {
     const fetchJob = async () => {
       if (!jobId) {
@@ -73,7 +74,7 @@ const JobDetails = () => {
 
         if (jobSnap.exists()) {
           setJob({ id: jobSnap.id, ...jobSnap.data() });
-          setTimeout(() => setIsVisible(true), 100); 
+          setTimeout(() => setIsVisible(true), 100);
         } else {
           setError("Job not found");
           toast.error("No such job found!");
@@ -90,13 +91,11 @@ const JobDetails = () => {
     fetchJob();
   }, [jobId]);
 
-  // Auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      
+
       if (user) {
-        // Fetch user data only when we have a confirmed user
         fetchUserData(user);
       } else {
         setLoadingProfile(false);
@@ -104,31 +103,25 @@ const JobDetails = () => {
         setProfileChecked(true);
       }
     });
-    
+
     return () => unsubscribe();
   }, []);
 
-  // Define the fetchUserData function outside of the useEffect
   const fetchUserData = async (user) => {
     try {
-      // Fetch profile data
       const profileRef = doc(db, "profiles", user.uid);
       const profileSnap = await getDoc(profileRef);
 
       if (profileSnap.exists()) {
         const profileData = profileSnap.data();
-        
-        // Check for all required fields
         const requiredFields = ['address', 'contactNumber', 'email', 'name'];
-        
-        // Filter out fields that actually exist and have values
-        const missing = requiredFields.filter(field => 
+        const missing = requiredFields.filter(field =>
           !profileData[field] || profileData[field] === ""
         );
-        
+
         setMissingFields(missing);
         setIsProfileComplete(missing.length === 0);
-        
+
         setApplicationForm({
           name: profileData.name || "",
           email: profileData.email || user.email || "",
@@ -140,15 +133,14 @@ const JobDetails = () => {
         setMissingFields(['address', 'contactNumber', 'email', 'name']);
       }
 
-      // Fetch previous resumes from applications
       setLoadingResumes(true);
       const applicationsQuery = query(
-        collection(db, "applications"), 
+        collection(db, "applications"),
         where("applicant_id", "==", user.uid)
       );
-      
+
       const applicationsSnap = await getDocs(applicationsQuery);
-      
+
       const uniqueResumes = new Map();
       applicationsSnap.forEach(doc => {
         const data = doc.data();
@@ -160,13 +152,12 @@ const JobDetails = () => {
           });
         }
       });
-      
-      // Sort by most recent first
+
       const sortedResumes = Array.from(uniqueResumes.values())
         .sort((a, b) => b.timestamp - a.timestamp);
-      
+
       setPreviousResumes(sortedResumes);
-      
+
     } catch (error) {
       console.error("Error fetching user data:", error);
       toast.error("Failed to load user information");
@@ -184,7 +175,7 @@ const JobDetails = () => {
 
     if (file.type === "application/pdf") {
       setSelectedFile(file);
-      setSelectedExistingResume(null); // Clear any selected existing resume
+      setSelectedExistingResume(null);
     } else {
       toast.error("Please upload a PDF file");
       e.target.value = null;
@@ -207,7 +198,7 @@ const JobDetails = () => {
 
     if (file.type === "application/pdf") {
       setSelectedFile(file);
-      setSelectedExistingResume(null); // Clear any selected existing resume
+      setSelectedExistingResume(null);
     } else {
       toast.error("Please upload a PDF file");
     }
@@ -217,9 +208,8 @@ const JobDetails = () => {
     if (selectedExistingResume === resumeUrl) {
       setSelectedExistingResume(null);
     } else {
-      // If not selected or different resume selected, select this one
       setSelectedExistingResume(resumeUrl);
-      setSelectedFile(null); // Clear any new file selection
+      setSelectedFile(null);
     }
   };
 
@@ -243,38 +233,67 @@ const JobDetails = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-  
+
     if (!selectedFile && !selectedExistingResume) {
       toast.error("Please select or upload a resume");
       return;
     }
-  
-    if (!currentUser) {  // Changed from auth.currentUser to currentUser
+
+    if (!currentUser) {
       toast.error("You need to be logged in to apply.");
       navigate("/login");
       return;
     }
-  
+
     setUploading(true);
-  
+
     try {
-      // Use existing resume URL or upload new file
       const resumeUrl = selectedExistingResume || await uploadToCloudinary(selectedFile);
-      const timestamp = new Date(); 
-  
+      const timestamp = new Date();
+      const formattedDate = timestamp.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+
+      // Save to Firestore
       await addDoc(collection(db, "applications"), {
         job_id: jobId,
         job_title: job.job_title,
         company: job.company,
         resume_link: resumeUrl,
-        applicant_id: currentUser.uid,  // Changed from auth.currentUser.uid
+        applicant_id: currentUser.uid,
         applicant_name: applicationForm.name,
         applicant_email: applicationForm.email,
         applicant_contact: applicationForm.contactNumber,
         applicant_address: applicationForm.address,
-        timestamp: timestamp, 
+        timestamp: timestamp,
       });
-  
+     
+      try {
+        const emailParams = {
+          to_name: applicationForm.name,
+          job_title: job.job_title,
+          company_name: job.company,
+          application_date: formattedDate,
+          resume_link: resumeUrl,
+          applicant_email: applicationForm.email,
+          to_email: applicationForm.email
+        };
+
+        await emailjs.send(
+          process.env.REACT_APP_EMAILJS_SERVICE_ID,
+          process.env.REACT_APP_EMAILJS_TEMPLATE_ID,
+          emailParams,
+          process.env.REACT_APP_EMAILJS_PUBLIC_KEY
+        );
+
+        toast.success("Application submitted successfully! Check your email for confirmation.");
+      } catch (emailError) {
+        console.error("EmailJS failed:", emailError);
+        toast("Application saved, but email confirmation failed.");
+      }
+
       if (selectedExistingResume) {
         setPreviousResumes(prevResumes => {
           const updatedResumes = prevResumes.map(resume => {
@@ -287,34 +306,33 @@ const JobDetails = () => {
             }
             return resume;
           });
-          
+
           return updatedResumes.sort((a, b) => b.timestamp - a.timestamp);
         });
       }
-  
-      toast.success("Application submitted successfully!");
+
       handleCloseModal();
-      
+
       setTimeout(() => {
         navigate("/job-listing");
       }, 1500);
-      
-    } catch (error) {
-      console.error("Error submitting application:", error);
-      toast.error("Failed to submit application. Please try again.");
+
+    } catch (dbError) {
+      console.error("Error submitting application to Firestore:", dbError);
+      toast.error("Failed to submit application to database.");
     } finally {
       setUploading(false);
     }
   };
 
-  // Format date for display
+
   const formatDate = (timestamp) => {
     if (!timestamp) return "";
-    
-    const date = timestamp instanceof Date 
-      ? timestamp 
+
+    const date = timestamp instanceof Date
+      ? timestamp
       : new Date(timestamp.seconds * 1000);
-      
+
     return date.toLocaleDateString("en-GB", {
       day: "numeric",
       month: "short",
@@ -341,7 +359,7 @@ const JobDetails = () => {
     }
 
     if (!job) {
-      return null; 
+      return null;
     }
 
     return (
@@ -490,11 +508,10 @@ const JobDetails = () => {
                       <button
                         onClick={() => auth.currentUser && setIsModalOpen(true)}
                         disabled={!auth.currentUser}
-                        className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition duration-300 shadow-md text-white ${
-                          auth.currentUser
+                        className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition duration-300 shadow-md text-white ${auth.currentUser
                           ? "bg-gradient-to-r from-blue to-darkblue hover:shadow-lg"
                           : "bg-gray-300 cursor-not-allowed"
-                        }`}
+                          }`}
                       >
                         <span>Submit Application</span>
                       </button>
@@ -517,7 +534,7 @@ const JobDetails = () => {
                         <p className="text-sm text-center text-orange">
                           Please complete your profile before applying. Missing: {" "}
                           <span className="font-semibold">
-                          {missingFields.map(field => getFieldDisplayName(field)).join(', ')}
+                            {missingFields.map(field => getFieldDisplayName(field)).join(', ')}
                           </span>
                           .{" "}
                           <button
@@ -603,22 +620,20 @@ const JobDetails = () => {
                           </div>
                         ) : (
                           previousResumes.slice(0, 3).map((resume, index) => (
-                            <div 
+                            <div
                               key={index}
-                              className={`p-3 cursor-pointer transition-colors ${
-                                selectedExistingResume === resume.url 
-                                  ? 'bg-blue/5 border-l-4 border-l-blue' 
-                                  : 'hover:bg-gray-50'
-                              }`}
+                              className={`p-3 cursor-pointer transition-colors ${selectedExistingResume === resume.url
+                                ? 'bg-blue/5 border-l-4 border-l-blue'
+                                : 'hover:bg-gray-50'
+                                }`}
                               onClick={() => toggleExistingResume(resume.url)}
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center space-x-2">
-                                  <div className={`p-1 rounded-full ${
-                                    selectedExistingResume === resume.url 
-                                      ? 'bg-blue/10 text-blue' 
-                                      : 'bg-gray-100 text-gray-500'
-                                  }`}>
+                                  <div className={`p-1 rounded-full ${selectedExistingResume === resume.url
+                                    ? 'bg-blue/10 text-blue'
+                                    : 'bg-gray-100 text-gray-500'
+                                    }`}>
                                     <FaFileUpload size={14} />
                                   </div>
                                   <div className="max-w-[150px] sm:max-w-[200px]">
@@ -636,7 +651,7 @@ const JobDetails = () => {
 
                         <div className="p-2 text-center">
                           <p className="text-xs text-gray-secondary">
-                            {selectedExistingResume 
+                            {selectedExistingResume
                               ? "Resume selected. You can upload a new one instead."
                               : "Select a previous resume or upload a new one."}
                           </p>
@@ -657,15 +672,14 @@ const JobDetails = () => {
                       </span>
                     </div>
                     <div
-                      className={`border-2 border-dashed rounded-xl transition-colors p-3 ${
-                        isDragging
+                      className={`border-2 border-dashed rounded-xl transition-colors p-3 ${isDragging
                         ? "border-blue bg-blue/5"
                         : selectedFile
                           ? "border-green bg-green/10"
                           : selectedExistingResume
                             ? "border-gray-200"
                             : "border-gray-200 hover:border-blue"
-                      }`}
+                        }`}
                       onDragOver={(e) => handleDrag(e, true)}
                       onDragLeave={(e) => handleDrag(e, false)}
                       onDrop={handleDrop}
@@ -682,9 +696,8 @@ const JobDetails = () => {
                         className={`block ${selectedExistingResume ? "opacity-50" : "cursor-pointer"}`}
                       >
                         <div className="space-y-1 text-center">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center mx-auto ${
-                            selectedFile ? "bg-green/10" : "bg-gray-100"
-                          }`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center mx-auto ${selectedFile ? "bg-green/10" : "bg-gray-100"
+                            }`}>
                             {selectedFile ? (
                               <BsCheckCircleFill className="w-4 h-4 text-green" />
                             ) : (
@@ -711,8 +724,8 @@ const JobDetails = () => {
                                 </span>
                               ) : (
                                 <span className="text-black-primary">
-                                  {selectedExistingResume 
-                                    ? "Using existing resume" 
+                                  {selectedExistingResume
+                                    ? "Using existing resume"
                                     : "Upload your resume"}
                                 </span>
                               )}
@@ -721,8 +734,8 @@ const JobDetails = () => {
                               {selectedFile ? (
                                 <span className="truncate block max-w-full">"{selectedFile.name}" <span className="underline">Change</span></span>
                               ) : (
-                                selectedExistingResume 
-                                  ? "Click to upload a new resume instead" 
+                                selectedExistingResume
+                                  ? "Click to upload a new resume instead"
                                   : "Drag & drop or click to browse"
                               )}
                             </p>
@@ -750,7 +763,7 @@ const JobDetails = () => {
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                         <span>Submitting...</span>
                       </div>
-                    ) : ( "Submit Application"
+                    ) : ("Submit Application"
                     )}
                   </button>
 
